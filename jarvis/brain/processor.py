@@ -47,10 +47,13 @@ def _build_prompt():
         return SYSTEM_PROMPT
 
 
-_PATTERNS = [
-    re.compile(r'TOOL_CALL:\s*(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
-    re.compile(r'(?<!\w)(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
-    re.compile(r'(?<!\w)(\w+)\s*:\s*"[^"]*"\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
+_WITH_ARGS = [
+    re.compile(r'(?:TOOL_CALL:\s*)?(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
+    re.compile(r'(\w+)\s*:\s*"[^"]*"\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
+]
+
+_WITHOUT_ARGS = [
+    re.compile(r'(?:TOOL_CALL:\s*)?(\w+)\s*\(\s*\)', re.DOTALL),
 ]
 
 
@@ -60,18 +63,25 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
     seen = set()
     calls = []
 
-    for pattern in _PATTERNS:
+    for pattern in _WITH_ARGS:
         for match in pattern.finditer(text):
             name = match.group(1)
             if name in seen or not get_tool(name):
                 continue
             seen.add(name)
-            raw = match.group(2)
             try:
-                args = json.loads(raw)
+                args = json.loads(match.group(2))
             except json.JSONDecodeError:
                 continue
             calls.append((name, args))
+
+    for pattern in _WITHOUT_ARGS:
+        for match in pattern.finditer(text):
+            name = match.group(1)
+            if name in seen or not get_tool(name):
+                continue
+            seen.add(name)
+            calls.append((name, {}))
 
     return calls
 
