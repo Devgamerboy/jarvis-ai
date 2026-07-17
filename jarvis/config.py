@@ -16,8 +16,12 @@ ASSISTANT_NAME = "JARVIS"
 SYSTEM_PROMPT = "You are JARVIS, a helpful and intelligent AI assistant."
 
 # Memory settings
-MEMORY_FILE = os.path.join(os.path.dirname(__file__), "memory", "conversations.json")
+MEMORY_DIR = os.path.join(os.path.dirname(__file__), "memory")
+MEMORY_FILE = os.path.join(MEMORY_DIR, "conversations.json")
 MAX_MEMORY_LINES = 50
+
+# Tool settings
+ENABLE_TOOLS = os.getenv("ENABLE_TOOLS", "true").lower() == "true"
 
 # Context settings
 MAX_CONTEXT_TURNS = int(os.getenv("MAX_CONTEXT_TURNS", "10"))

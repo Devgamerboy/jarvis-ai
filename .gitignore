@@ -13,6 +13,8 @@ venv/
 # User data and logs
 logs/
 memory/conversations.json
+memory/facts.json
+memory/preferences.json
 *.log
 
 # IDE
@@ -29,3 +31,5 @@ Thumbs.db
 # Project specific
 jarvis/logs/
 jarvis/memory/conversations.json
+jarvis/memory/facts.json
+jarvis/memory/preferences.json
