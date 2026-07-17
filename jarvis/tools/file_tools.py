@@ -4,7 +4,7 @@ from .base import Tool
 
 class ReadFileTool(Tool):
     def __init__(self):
-        super().__init__("read_file", "Read the contents of a file at a given path.")
+        super().__init__("read_file", "Only when the user explicitly asks to read, open, view, or show the contents of a file. Do NOT use for greetings or general chat.")
 
     def execute(self, path: str) -> dict:
         if not os.path.exists(path):
@@ -18,7 +18,7 @@ class ReadFileTool(Tool):
 
 class WriteFileTool(Tool):
     def __init__(self):
-        super().__init__("write_file", "Write content to a file. Creates parent directories.")
+        super().__init__("write_file", "Only when the user explicitly asks to create, write, save, or store something in a file. Do NOT use for any other purpose.")
 
     def execute(self, path: str, content: str) -> dict:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -29,7 +29,7 @@ class WriteFileTool(Tool):
 
 class ListFilesTool(Tool):
     def __init__(self):
-        super().__init__("list_files", "List files and directories at a given path.")
+        super().__init__("list_files", "Only when the user explicitly asks to list, show, or browse files and directories. Do NOT use for general chat.")
 
     def execute(self, path: str = ".") -> dict:
         if not os.path.exists(path):

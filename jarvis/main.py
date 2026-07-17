@@ -6,13 +6,13 @@ from datetime import datetime
 
 import ollama
 
-from brain.processor import (
+from .brain.processor import (
     ask_ollama,
     ask_ollama_stream,
     build_messages,
     parse_tool_calls,
 )
-from config import (
+from .config import (
     ASSISTANT_NAME,
     ENABLE_COLORS,
     ENABLE_STREAMING,
@@ -21,8 +21,9 @@ from config import (
     MAX_CONTEXT_TURNS,
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
+    OLLAMA_TIMEOUT,
 )
-from memory.memory import add_entry, load_memory
+from .memory.memory import add_entry, load_memory
 
 
 def _color(code, text):
@@ -85,7 +86,7 @@ def print_banner():
 
 def check_ollama():
     try:
-        ollama.Client(host=OLLAMA_BASE_URL).list()
+        ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT).list()
     except ollama.RequestError:
         print(ts(red(f"Cannot connect to Ollama at {OLLAMA_BASE_URL}")))
         print(ts(yellow("  Start Ollama with: ollama serve")))
@@ -93,6 +94,9 @@ def check_ollama():
         return False
     except ollama.ResponseError as e:
         print(ts(red(f"Ollama error: {e.error}")))
+        return False
+    except Exception as e:
+        print(ts(red(f"Ollama connection failed: {e}")))
         return False
     return True
 
@@ -113,7 +117,7 @@ def handle_command(cmd: str) -> bool:
         return True
 
     if verb == "/tools":
-        from tools import list_all
+        from .tools import list_all
         tools = list_all()
         if not tools:
             print(ts(yellow("No tools registered.")))
@@ -136,7 +140,7 @@ def handle_command(cmd: str) -> bool:
             except json.JSONDecodeError:
                 print(ts(red("Arguments must be valid JSON (e.g. /tool read_file {\"path\": \"/tmp/test\"})")))
                 return True
-        from tools import execute
+        from .tools import execute
         result = execute(tool_name, **tool_args)
         if result["success"]:
             print(ts(green("Result:")))
@@ -146,13 +150,13 @@ def handle_command(cmd: str) -> bool:
         return True
 
     if verb == "/clear":
-        from memory.conversations import clear
+        from .memory.conversations import clear
         clear()
         print(ts(green("Conversation history cleared.")))
         return True
 
     if verb == "/status":
-        from tools.system_tools import SystemInfoTool
+        from .tools.system_tools import SystemInfoTool
         result = SystemInfoTool().execute()
         print(ts(cyan("System Information:")))
         for k, v in result.items():
@@ -163,9 +167,45 @@ def handle_command(cmd: str) -> bool:
     return False
 
 
-def process_tool_calls(messages, initial_response):
-    from brain.processor import MAX_TOOL_ROUNDS
-    from tools import execute
+_TOOL_KEYWORDS = {
+    "system_info": ["system", "os ", "operating system", "cpu", "processor", "memory", "ram", "hardware", "computer spec", "machine", "platform", "specs"],
+    "web_search": ["search", "look up", "find online", "google", "duckduckgo", "search the web", "find on the internet", "what is", "who is"],
+    "web_fetch": ["fetch", "get url", "open url", "visit", "download page", "http", "https://", "website content"],
+    "read_file": ["read", "open file", "show file", "view file", "cat ", "content of", "print file"],
+    "write_file": ["write", "create", "save", "make file", "store", "new file"],
+    "list_files": ["list", "show files", "show directory", "what files", "ls ", "dir ", "browse", "contents of"],
+}
+
+def _strip_tool_calls(text: str) -> str:
+    lines = [l for l in text.split("\n") if "TOOL_CALL:" not in l]
+    cleaned = "\n".join(l for l in lines if l.strip()).strip()
+    if cleaned:
+        return cleaned
+    return "I understood your request and processed it."
+
+_CASUAL = {"hello", "hi", "hey", "sup", "howdy", "yo", "thanks", "thank you", "thx", "goodbye", "bye", "see you", "good day"}
+_CASUAL_PHRASES = ["good morning", "good afternoon", "good evening", "how are you", "how's it going", "what's up", "whats up", "nice to meet"]
+
+def _is_casual(text):
+    t = text.strip().lower().rstrip("?!.,;:")
+    if t in _CASUAL or any(t.startswith(p) for p in _CASUAL_PHRASES):
+        return True
+    first = t.split()[0] if t.split() else ""
+    if first in {"hello", "hi", "hey", "sup", "howdy", "yo", "thanks", "bye"}:
+        return True
+    return False
+
+def _validate_tool_call(user_input: str, tool_name: str) -> bool:
+    if _is_casual(user_input):
+        return False
+    lowered = user_input.lower()
+    keywords = _TOOL_KEYWORDS.get(tool_name, [])
+    return any(kw in lowered for kw in keywords)
+
+
+def process_tool_calls(messages, initial_response, user_input):
+    from .brain.processor import MAX_TOOL_ROUNDS
+    from .tools import execute
 
     text = initial_response
     for _round in range(MAX_TOOL_ROUNDS):
@@ -173,9 +213,13 @@ def process_tool_calls(messages, initial_response):
         if not calls:
             return text
 
+        valid = [(n, a) for n, a in calls if _validate_tool_call(user_input, n)]
+        if not valid:
+            return text
+
         messages.append({"role": "assistant", "content": text})
 
-        for name, args in calls:
+        for name, args in valid:
             print(ts(yellow(f"  Using tool: {name}...")))
             result = execute(name, **args)
             messages.append({
@@ -204,13 +248,13 @@ def main():
     setup_logging()
 
     if ENABLE_TOOLS:
-        from tools import register_all
+        from .tools import register_all
         register_all()
 
     print_banner()
 
     if ENABLE_TOOLS:
-        from tools import list_all
+        from .tools import list_all
         tools = list_all()
         if tools:
             print(ts(grey(f"Tools loaded: {', '.join(t['name'] for t in tools)}")))
@@ -246,12 +290,18 @@ def main():
         messages = build_messages(user_input, memory, MAX_CONTEXT_TURNS)
 
         try:
-            if ENABLE_TOOLS:
+            if ENABLE_TOOLS and not _is_casual(user_input):
                 full_reply = ask_ollama(messages)
                 calls = parse_tool_calls(full_reply)
-                if calls:
-                    full_reply = process_tool_calls(messages, full_reply)
-                print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
+                valid_calls = [(n, a) for n, a in calls if _validate_tool_call(user_input, n)]
+                if valid_calls:
+                    full_reply = process_tool_calls(messages, full_reply, user_input)
+                cleaned = _strip_tool_calls(full_reply)
+                print(ts(green(f"{ASSISTANT_NAME}: {cleaned}")))
+            elif ENABLE_TOOLS and _is_casual(user_input):
+                full_reply = ask_ollama(messages)
+                cleaned = _strip_tool_calls(full_reply)
+                print(ts(green(f"{ASSISTANT_NAME}: {cleaned}")))
             else:
                 if ENABLE_STREAMING:
                     full_reply = stream_response(messages)
@@ -259,9 +309,10 @@ def main():
                     full_reply = ask_ollama(messages)
                     print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
 
-        except RuntimeError as e:
-            print(ts(red(f"Error: {e}")))
-            logging.error(str(e))
+        except Exception as e:
+            msg = str(e).strip() or type(e).__name__
+            print(ts(red(f"Error: {msg}")))
+            logging.error(msg)
             continue
 
         add_entry(user_input, full_reply)

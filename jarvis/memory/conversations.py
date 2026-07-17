@@ -1,6 +1,6 @@
 import json
 import os
-from config import MEMORY_DIR, MAX_MEMORY_LINES
+from ..config import MEMORY_DIR, MAX_MEMORY_LINES
 
 _FILE = os.path.join(MEMORY_DIR, "conversations.json")
 

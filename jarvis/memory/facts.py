@@ -1,6 +1,6 @@
 import json
 import os
-from config import MEMORY_DIR
+from ..config import MEMORY_DIR
 
 _FILE = os.path.join(MEMORY_DIR, "facts.json")
 

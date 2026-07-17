@@ -57,7 +57,7 @@ def _disk_info():
 
 class SystemInfoTool(Tool):
     def __init__(self):
-        super().__init__("system_info", "Get OS, CPU, memory, disk, and Python version info.")
+        super().__init__("system_info", "Only when the user explicitly asks about their system, OS, CPU, memory, hardware, or computer specifications.")
 
     def execute(self) -> dict:
         return {

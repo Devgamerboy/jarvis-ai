@@ -1,7 +1,10 @@
+import atexit
 import json
 import re
+
+
 import ollama
-from config import (
+from ..config import (
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
     OLLAMA_TIMEOUT,
@@ -13,16 +16,30 @@ from config import (
 
 MAX_TOOL_ROUNDS = 3
 
+_client = None
 
 def _get_client():
-    return ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT)
+    global _client
+    if _client is None:
+        _client = ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT)
+        atexit.register(_close_client)
+    return _client
+
+def _close_client():
+    global _client
+    if _client is not None:
+        try:
+            _client.close()
+        except Exception:
+            pass
+        _client = None
 
 
 def _build_prompt():
     if not ENABLE_TOOLS:
         return SYSTEM_PROMPT
     try:
-        from tools import list_all
+        from ..tools import list_all
         tools = list_all()
         if not tools:
             return SYSTEM_PROMPT
@@ -39,23 +56,54 @@ def _build_prompt():
         parts = [
             SYSTEM_PROMPT,
             "",
-            "You MUST follow these rules:",
-            "1. When a tool exists that can answer the question, you MUST call it.",
-            "2. NEVER invent or guess system information, hardware details, or facts.",
-            "3. Base your answer ONLY on the data the tool returns.",
-            "4. To call a tool, output exactly one line:",
-            '   TOOL_CALL: tool_name({"param": "value"})',
-            "   For tools with no parameters:",
-            "   TOOL_CALL: tool_name()",
+            "## Tool Usage Guidelines",
             "",
-            "Examples:",
-            "  User: What system am I on?",
-            "  Assistant: TOOL_CALL: system_info()",
+            "You have access to tools for system info, file operations, and web lookups.",
+            "Only call a tool when the user explicitly asks for something that requires one:",
+            "- system_info: only when asked about system, OS, CPU, memory, or hardware",
+            "- web_search: only when asked to search the web or look something up online",
+            "- web_fetch: only when given a specific URL to fetch",
+            "- read_file: only when asked to read, open, or view a file",
+            "- write_file: only when asked to create, write, or save a file",
+            "- list_files: only when asked to list files or directories",
             "",
-            "  User: Search the web for Python news",
-            '  Assistant: TOOL_CALL: web_search({"query": "Python news"})',
+            "For greetings, casual conversation, thanks, or goodbyes — just reply conversationally. Be friendly and natural.",
+            "Never call a tool for greetings or chit-chat.",
             "",
-            "Available tools and how to call them:",
+            "IMPORTANT: When the user asks a factual question that a tool can answer (system info, search, file read), you MUST call the tool.",
+            "NEVER invent or guess system information, hardware details, search results, or file contents.",
+            "Base your answer ONLY on the data the tool returns.",
+            "",
+            "To call a tool, output exactly one line:",
+            '    TOOL_CALL: tool_name({"param": "value"})',
+            "    For tools with no parameters:",
+            "    TOOL_CALL: tool_name()",
+            "After the tool runs, summarize the result naturally.",
+            "",
+            "## Examples",
+            "",
+            'User: hello',
+            'Assistant: Hey there! How can I help you today?',
+            "",
+            'User: hi jarvis',
+            'Assistant: Hi! What can I do for you?',
+            "",
+            'User: good morning',
+            'Assistant: Good morning! Hope you are having a great day. How can I assist?',
+            "",
+            'User: What system am I on?',
+            'Assistant: TOOL_CALL: system_info()',
+            "",
+            'User: Search the web for Python news',
+            'Assistant: TOOL_CALL: web_search({"query": "Python news"})',
+            "",
+'User: Create a file called test.txt with content "hello"',
+'Assistant: TOOL_CALL: write_file({"path": "/tmp/test.txt", "content": "hello"})',
+"",
+'User: Read the file /tmp/test.txt',
+'Assistant: TOOL_CALL: read_file({"path": "/tmp/test.txt"})',
+"",
+"Available tools:",
         ]
 
         for t in tools:
@@ -82,7 +130,7 @@ _WITHOUT_ARGS = [
 
 
 def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
-    from tools import get as get_tool
+    from ..tools import get as get_tool
 
     seen = set()
     calls = []
@@ -130,6 +178,8 @@ def ask_ollama(messages, keep_alive=OLLAMA_KEEP_ALIVE):
             f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
             f"Is it running? ({e.error})"
         )
+    except Exception as e:
+        raise RuntimeError(f"Ollama request failed: {e}")
     return response["message"]["content"]
 
 
@@ -155,6 +205,8 @@ def ask_ollama_stream(messages, keep_alive=OLLAMA_KEEP_ALIVE):
             f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
             f"Is it running? ({e.error})"
         )
+    except Exception as e:
+        raise RuntimeError(f"Ollama request failed: {e}")
 
 
 def build_messages(user_input, memory_log, max_turns=MAX_CONTEXT_TURNS):

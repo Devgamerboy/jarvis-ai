@@ -38,12 +38,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   enabled.
 - `README.md` updated with tool documentation, new commands, and revised
   project structure.
-- `requirements.txt` now includes `requests`, `duckduckgo_search`, and
+- `requirements.txt` now includes `requests`, `ddgs`, and
   `beautifulsoup4` for web tool functionality.
+- **All imports converted to relative package imports** — project runs via
+  `python -m jarvis.main` from any directory.
+- **DuckDuckGo library updated** — migrated from deprecated
+  `duckduckgo_search` to `ddgs`.
+- **Ollama client lifecycle** — module-level singleton client with `atexit`
+  cleanup eliminates `ResourceWarning: unclosed socket`.
+- **System prompt strengthened** — tools are only invoked when the user
+  explicitly requests an actionable task; greetings and casual conversation
+  skip tool execution entirely.
+- **Tool descriptions improved** — each tool description explicitly states
+  when it should be used, preventing model misuse.
+- **Runtime tool call validation** — pre-execution intent guard checks user
+  input against keyword patterns per tool; blocks mismatched or unsolicited
+  tool calls before they execute.
+- **Greeting/casual conversation filter** — `_is_casual()` detects greetings,
+  thanks, farewells, and small talk, and bypasses the entire tool pipeline
+  so the model responds conversationally.
 
 ### Removed
 
 - Old `tools/tools.py` stub file (replaced by the new tool package).
+- Deprecated `duckduckgo_search` dependency (replaced by `ddgs`).
+- Old top-level absolute imports.
 
 ## [1.0.0] - 2026-07-16
 

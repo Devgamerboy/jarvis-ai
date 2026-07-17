@@ -71,8 +71,8 @@ pip install -r requirements.txt
 # Make sure Ollama is running
 ollama serve
 
-# In another terminal, start JARVIS
-python jarvis/main.py
+# In another terminal, start JARVIS (from the repository root)
+python -m jarvis.main
 ```
 
 Type your messages at the `You:` prompt. Use `/help` to see available commands.

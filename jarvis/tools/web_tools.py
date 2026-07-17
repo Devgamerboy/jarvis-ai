@@ -3,11 +3,11 @@ from .base import Tool
 
 class WebSearchTool(Tool):
     def __init__(self):
-        super().__init__("web_search", "Search the web using DuckDuckGo. Returns title, snippet, URL.")
+        super().__init__("web_search", "Only when the user explicitly asks to search the web, look something up online, or find information on the internet.")
 
     def execute(self, query: str, max_results: int = 5) -> dict:
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
             with DDGS() as ddgs:
                 results = [
                     {"title": r.get("title", ""), "snippet": r.get("body", ""), "url": r.get("href", "")}
@@ -15,14 +15,14 @@ class WebSearchTool(Tool):
                 ]
             return {"query": query, "results": results, "count": len(results)}
         except ImportError:
-            return {"error": "duckduckgo_search not installed. Run: pip install duckduckgo_search"}
+            return {"error": "ddgs not installed. Run: pip install ddgs"}
         except Exception as e:
             return {"error": f"Search failed: {e}"}
 
 
 class WebFetchTool(Tool):
     def __init__(self):
-        super().__init__("web_fetch", "Fetch the text content of a URL.")
+        super().__init__("web_fetch", "Only when the user explicitly asks to fetch, open, or download the contents of a specific URL or website.")
 
     def execute(self, url: str) -> dict:
         try:
