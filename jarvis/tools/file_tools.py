@@ -1,5 +1,5 @@
 import os
-from tools.base import Tool
+from .base import Tool
 
 
 class ReadFileTool(Tool):

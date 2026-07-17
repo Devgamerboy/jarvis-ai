@@ -2,7 +2,7 @@ import os
 import platform
 import shutil
 import sys
-from tools.base import Tool
+from .base import Tool
 
 
 def _read_cpu_info():

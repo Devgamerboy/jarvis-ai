@@ -1,4 +1,4 @@
-from tools.base import Tool
+from .base import Tool
 
 
 _registry: dict[str, Tool] = {}
