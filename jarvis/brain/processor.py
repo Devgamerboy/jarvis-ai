@@ -26,23 +26,47 @@ def _build_prompt():
         tools = list_all()
         if not tools:
             return SYSTEM_PROMPT
-        lines = [
+
+        usage_examples = {
+            "system_info": 'TOOL_CALL: system_info()',
+            "web_search": 'TOOL_CALL: web_search({"query": "Python programming"})',
+            "read_file": 'TOOL_CALL: read_file({"path": "/etc/os-release"})',
+            "write_file": 'TOOL_CALL: write_file({"path": "/tmp/note.txt", "content": "hello"})',
+            "list_files": 'TOOL_CALL: list_files({"path": "/home"})',
+            "web_fetch": 'TOOL_CALL: web_fetch({"url": "https://example.com"})',
+        }
+
+        parts = [
             SYSTEM_PROMPT,
             "",
-            "You have access to tools. When you need to use one, output exactly:",
-            'TOOL_CALL: tool_name({"param": "value"})',
+            "You MUST follow these rules:",
+            "1. When a tool exists that can answer the question, you MUST call it.",
+            "2. NEVER invent or guess system information, hardware details, or facts.",
+            "3. Base your answer ONLY on the data the tool returns.",
+            "4. To call a tool, output exactly one line:",
+            '   TOOL_CALL: tool_name({"param": "value"})',
+            "   For tools with no parameters:",
+            "   TOOL_CALL: tool_name()",
             "",
-            "Example:",
-            'TOOL_CALL: web_search({"query": "Python programming"})',
+            "Examples:",
+            "  User: What system am I on?",
+            "  Assistant: TOOL_CALL: system_info()",
             "",
-            "The tool will run and you will see the result.",
-            "Then continue your answer based on the tool result.",
+            "  User: Search the web for Python news",
+            '  Assistant: TOOL_CALL: web_search({"query": "Python news"})',
             "",
-            "Available tools:",
+            "Available tools and how to call them:",
         ]
+
         for t in tools:
-            lines.append(f"  {t['name']} — {t['description']}")
-        return "\n".join(lines)
+            hint = usage_examples.get(t["name"])
+            if hint:
+                parts.append(f"  {t['name']} — {t['description']}")
+                parts.append(f"    Call: {hint}")
+            else:
+                parts.append(f"  {t['name']} — {t['description']}")
+
+        return "\n".join(parts)
     except Exception:
         return SYSTEM_PROMPT
 
