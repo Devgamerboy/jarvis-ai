@@ -12,18 +12,24 @@ models locally, keeping your data private and your costs at zero.
 
 - **Local AI** — Runs on your machine with Ollama. No cloud, no API keys, no
   data leaks.
-- **Persistent memory** — Conversations are saved to disk and restored on
-  restart.
+- **Tool framework** — Web search, file read/write, system info, and more.
+  Extensible via a simple `Tool` base class.
+- **Web search** — Search the web using DuckDuckGo (free, no API key needed).
+- **File tools** — Read, write, and list files directly from the chat.
+- **Persistent memory** — Conversations, user facts, and preferences are saved
+  to disk.
 - **Streaming responses** — See tokens appear in real time as the model
   generates them.
-- **Configurable** — Model, keep-alive, context length, colors, streaming, and
-  more are adjustable via environment variables or `config.py`.
+- **Configurable** — Model, keep-alive, context length, colors, streaming, tools,
+  and more are adjustable via environment variables or `config.py`.
 - **Error handling** — Startup health check detects missing models or offline
   servers and shows clear instructions.
 - **Modular design** — Separate `brain/`, `memory/`, `tools/`, and `voice/`
   packages make the codebase easy to navigate and extend.
-- **Colored terminal UI** — User input, assistant replies, errors, and status
-  messages each have a distinct color.
+- **Colored terminal UI** — User input, assistant replies, timestamps, errors,
+  and status messages each have a distinct color.
+- **Timestamps** — Every message is prefixed with a `[HH:MM:SS]` timestamp.
+- **Slash commands** — Built-in commands for tools, system status, and help.
 - **Logging** — Errors are automatically logged to `logs/errors.log` with
   timestamps.
 
@@ -69,7 +75,29 @@ ollama serve
 python jarvis/main.py
 ```
 
-Type your messages at the `You:` prompt. Press `Ctrl+C` or type `exit` to quit.
+Type your messages at the `You:` prompt. Use `/help` to see available commands.
+Press `Ctrl+C` or type `exit` to quit.
+
+### Slash Commands
+
+| Command | Description |
+|---|---|
+| `/help` | Show available commands |
+| `/tools` | List all registered tools |
+| `/tool <name> <json>` | Run a tool directly (e.g. `/tool web_search {"query":"weather"}`) |
+| `/clear` | Clear conversation history |
+| `/status` | Show system information (OS, CPU, disk, Python) |
+
+### Tools
+
+| Tool | Description |
+|---|---|
+| `web_search` | Search the web via DuckDuckGo |
+| `web_fetch` | Fetch and extract text from a URL |
+| `read_file` | Read file contents |
+| `write_file` | Write content to a file |
+| `list_files` | List directory contents |
+| `system_info` | Show OS, CPU, disk, and Python info |
 
 ### Configuration
 
@@ -84,6 +112,7 @@ All settings can be overridden with environment variables:
 | `MAX_CONTEXT_TURNS` | `10` | Conversation pairs sent to the LLM |
 | `ENABLE_STREAMING` | `true` | Enable token-by-token streaming |
 | `ENABLE_COLORS` | `true` | Enable colored terminal output |
+| `ENABLE_TOOLS` | `true` | Enable the tool framework |
 
 ---
 
@@ -94,10 +123,17 @@ jarvis/
 ├── jarvis/                  # Main Python package
 │   ├── brain/               # LLM interaction & prompt building
 │   │   └── processor.py
-│   ├── memory/              # Conversation persistence
-│   │   └── memory.py
-│   ├── tools/               # Extensible tool framework (future)
-│   │   └── tools.py
+│   ├── memory/              # Memory persistence
+│   │   ├── conversations.py # Conversation history
+│   │   ├── facts.py         # User facts storage
+│   │   ├── memory.py        # Backward-compatible wrapper
+│   │   └── preferences.py   # User preferences storage
+│   ├── tools/               # Extensible tool framework
+│   │   ├── base.py          # Abstract Tool base class
+│   │   ├── registry.py      # Tool registration & execution
+│   │   ├── file_tools.py    # Read, write, list files
+│   │   ├── web_tools.py     # Web search & fetch
+│   │   └── system_tools.py  # System information
 │   ├── voice/               # Voice interface (future)
 │   │   └── __init__.py
 │   ├── config.py            # Central configuration
@@ -115,12 +151,6 @@ jarvis/
 
 ---
 
-## Screenshots
-
-> *Screenshots coming soon.*
-
----
-
 ## Roadmap
 
 - [x] Local AI via Ollama
@@ -129,8 +159,10 @@ jarvis/
 - [x] Configurable settings
 - [x] Colored terminal interface
 - [x] Error handling & logging
+- [x] **Tool framework (web search, file ops, system info)**
+- [x] **User facts & preferences storage**
+- [x] **Timestamps & slash commands**
 - [ ] Voice interaction
-- [ ] Tool framework (web search, file ops, etc.)
 - [ ] Website generation
 - [ ] Image generation
 - [ ] Long-term memory / RAG

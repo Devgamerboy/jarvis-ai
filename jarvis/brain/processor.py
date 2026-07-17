@@ -1,9 +1,5 @@
-"""LLM communication and prompt construction.
-
-Sends messages to Ollama, handles streaming, and builds
-conversation prompts with configurable context windows.
-"""
-
+import json
+import re
 import ollama
 from config import (
     OLLAMA_BASE_URL,
@@ -12,24 +8,57 @@ from config import (
     OLLAMA_KEEP_ALIVE,
     SYSTEM_PROMPT,
     MAX_CONTEXT_TURNS,
+    ENABLE_TOOLS,
+)
+
+TOOL_CALL_RE = re.compile(
+    r'TOOL_CALL:\s*(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL
 )
 
 
 def _get_client():
-    """Return a configured Ollama client."""
     return ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT)
 
 
+def _build_prompt():
+    if not ENABLE_TOOLS:
+        return SYSTEM_PROMPT
+    try:
+        from tools import list_all
+        tools = list_all()
+        if not tools:
+            return SYSTEM_PROMPT
+        lines = [
+            SYSTEM_PROMPT,
+            "",
+            "You have access to tools you can use to help the user.",
+            "When you need to use a tool, output exactly one line with this format:",
+            'TOOL_CALL: tool_name({"param": "value"})',
+            "The tool will run and you will see the result.",
+            "Then continue your answer based on the tool result.",
+            "",
+            "Available tools:",
+        ]
+        for t in tools:
+            lines.append(f"  {t['name']} — {t['description']}")
+        return "\n".join(lines)
+    except Exception:
+        return SYSTEM_PROMPT
+
+
+def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
+    calls = []
+    for match in TOOL_CALL_RE.finditer(text):
+        name = match.group(1)
+        try:
+            args = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            args = {}
+        calls.append((name, args))
+    return calls
+
+
 def ask_ollama(messages, keep_alive=OLLAMA_KEEP_ALIVE):
-    """Send messages to Ollama and return the full assistant reply.
-
-    Args:
-        messages: List of message dicts with 'role' and 'content'.
-        keep_alive: Duration to keep the model loaded.
-
-    Returns:
-        The assistant's response text.
-    """
     try:
         response = _get_client().chat(
             model=OLLAMA_MODEL,
@@ -49,20 +78,10 @@ def ask_ollama(messages, keep_alive=OLLAMA_KEEP_ALIVE):
             f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
             f"Is it running? ({e.error})"
         )
-
     return response["message"]["content"]
 
 
 def ask_ollama_stream(messages, keep_alive=OLLAMA_KEEP_ALIVE):
-    """Send messages to Ollama and stream the response token by token.
-
-    Args:
-        messages: List of message dicts with 'role' and 'content'.
-        keep_alive: Duration to keep the model loaded.
-
-    Yields:
-        Response chunks from Ollama, each containing a message fragment.
-    """
     try:
         stream = _get_client().chat(
             model=OLLAMA_MODEL,
@@ -87,21 +106,7 @@ def ask_ollama_stream(messages, keep_alive=OLLAMA_KEEP_ALIVE):
 
 
 def build_messages(user_input, memory_log, max_turns=MAX_CONTEXT_TURNS):
-    """Build the full message list sent to the LLM.
-
-    Only the most recent ``max_turns`` conversation pairs are included
-    to keep prompt size manageable.  The full history is still persisted
-    to disk by the memory module.
-
-    Args:
-        user_input: The current user message.
-        memory_log: List of past {user, assistant} dicts.
-        max_turns: Number of recent conversation pairs to include.
-
-    Returns:
-        A list of message dicts ready for the Ollama chat API.
-    """
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": _build_prompt()}]
 
     if max_turns > 0:
         recent = memory_log[-max_turns:]
