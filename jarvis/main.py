@@ -163,24 +163,41 @@ def handle_command(cmd: str) -> bool:
     return False
 
 
-def resolve_tool_calls(messages, text):
-    calls = parse_tool_calls(text)
-    if not calls:
-        return text
-
+def process_tool_calls(messages, initial_response):
+    from brain.processor import MAX_TOOL_ROUNDS
     from tools import execute
 
-    for name, args in calls:
-        print(ts(yellow(f"  Using tool: {name}...")))
-        result = execute(name, **args)
-        messages.append({"role": "assistant", "content": text})
-        messages.append({
-            "role": "user",
-            "content": f"Tool '{name}' returned: {json.dumps(result, indent=2, default=str)}"
-        })
+    text = initial_response
+    for _round in range(MAX_TOOL_ROUNDS):
+        calls = parse_tool_calls(text)
+        if not calls:
+            return text
 
-    final = ask_ollama(messages)
-    return resolve_tool_calls(messages, final)
+        messages.append({"role": "assistant", "content": text})
+
+        for name, args in calls:
+            print(ts(yellow(f"  Using tool: {name}...")))
+            result = execute(name, **args)
+            messages.append({
+                "role": "user",
+                "content": f"Tool '{name}' returned: {json.dumps(result, indent=2, default=str)}"
+            })
+
+        text = ask_ollama(messages)
+
+    return text
+
+
+def stream_response(messages):
+    full_reply = ""
+    print(ts(green(f"{ASSISTANT_NAME}: ")), end="", flush=True)
+    for chunk in ask_ollama_stream(messages):
+        content = chunk["message"]["content"]
+        if content:
+            print(content, end="", flush=True)
+            full_reply += content
+    print()
+    return full_reply
 
 
 def main():
@@ -229,24 +246,18 @@ def main():
         messages = build_messages(user_input, memory, MAX_CONTEXT_TURNS)
 
         try:
-            if ENABLE_STREAMING:
-                full_reply = ""
-                print(ts(green(f"{ASSISTANT_NAME}: ")), end="", flush=True)
-                for chunk in ask_ollama_stream(messages):
-                    content = chunk["message"]["content"]
-                    if content:
-                        print(content, end="", flush=True)
-                        full_reply += content
-                print()
-            else:
-                full_reply = ask_ollama(messages)
-                print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
-
             if ENABLE_TOOLS:
-                resolved = resolve_tool_calls(messages, full_reply)
-                if resolved != full_reply:
-                    print(ts(green(f"{ASSISTANT_NAME}: {resolved}")))
-                    full_reply = resolved
+                full_reply = ask_ollama(messages)
+                calls = parse_tool_calls(full_reply)
+                if calls:
+                    full_reply = process_tool_calls(messages, full_reply)
+                print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
+            else:
+                if ENABLE_STREAMING:
+                    full_reply = stream_response(messages)
+                else:
+                    full_reply = ask_ollama(messages)
+                    print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
 
         except RuntimeError as e:
             print(ts(red(f"Error: {e}")))

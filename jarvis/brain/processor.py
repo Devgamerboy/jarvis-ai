@@ -11,9 +11,7 @@ from config import (
     ENABLE_TOOLS,
 )
 
-TOOL_CALL_RE = re.compile(
-    r'TOOL_CALL:\s*(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL
-)
+MAX_TOOL_ROUNDS = 3
 
 
 def _get_client():
@@ -31,9 +29,12 @@ def _build_prompt():
         lines = [
             SYSTEM_PROMPT,
             "",
-            "You have access to tools you can use to help the user.",
-            "When you need to use a tool, output exactly one line with this format:",
+            "You have access to tools. When you need to use one, output exactly:",
             'TOOL_CALL: tool_name({"param": "value"})',
+            "",
+            "Example:",
+            'TOOL_CALL: web_search({"query": "Python programming"})',
+            "",
             "The tool will run and you will see the result.",
             "Then continue your answer based on the tool result.",
             "",
@@ -46,15 +47,32 @@ def _build_prompt():
         return SYSTEM_PROMPT
 
 
+_PATTERNS = [
+    re.compile(r'TOOL_CALL:\s*(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
+    re.compile(r'(?<!\w)(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
+    re.compile(r'(?<!\w)(\w+)\s*:\s*"[^"]*"\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
+]
+
+
 def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
+    from tools import get as get_tool
+
+    seen = set()
     calls = []
-    for match in TOOL_CALL_RE.finditer(text):
-        name = match.group(1)
-        try:
-            args = json.loads(match.group(2))
-        except json.JSONDecodeError:
-            args = {}
-        calls.append((name, args))
+
+    for pattern in _PATTERNS:
+        for match in pattern.finditer(text):
+            name = match.group(1)
+            if name in seen or not get_tool(name):
+                continue
+            seen.add(name)
+            raw = match.group(2)
+            try:
+                args = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            calls.append((name, args))
+
     return calls
 
 
