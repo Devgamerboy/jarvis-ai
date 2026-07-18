@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-07-18
+
+### Added
+
+- **OpenAI-compatible backend** — Switched from Ollama to configurable OpenAI-compatible API (KoboldCpp, vLLM, etc.).
+- **`.env` configuration** — `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are now stored in `.env` instead of hardcoded in Python.
+- **KoboldCpp / Gemma 4 12B support** — Defaults to `koboldcpp/gemma-4-12b-it-qat-q4_0`.
+- **Graceful offline error** — Shows "Gemma AI server unavailable at {URL}" when backend is unreachable.
+- **`temperature=0.7`** — Set on all AI requests for consistent output.
+- **Remote AI server support** — JARVIS can connect to a backend running on any machine on your LAN.
+
+### Changed
+
+- `jarvis/brain/client.py` — New OpenAI client singleton using `from openai import OpenAI`.
+- `jarvis/brain/processor.py` — `ask_ollama` → `ask_ai`, `ask_ollama_stream` → `ask_ai_stream`; uses `client.chat.completions.create()`.
+- `jarvis/config.py` — `OLLAMA_*` variables replaced with `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`; loads `.env` via `python-dotenv`.
+- `jarvis/main.py` — `check_ollama` → `check_ai`; error messages include the configured URL; logs failures to file.
+- `jarvis/requirements.txt` — Removed `ollama` package, added `python-dotenv`.
+- `README.md` / `CHANGELOG.md` — All Ollama references removed.
+
+### Removed
+
+- All `import ollama` and `ollama.Client()` usage from the codebase.
+- Hardcoded model/server values from Python source.
+- `ollama` Python package dependency.
+
 ## [1.1.0] - 2026-07-17
 
 ### Added
