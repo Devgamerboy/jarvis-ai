@@ -1,17 +1,16 @@
 # JARVIS
 
-**A free, local AI assistant powered by Ollama.**
+**A free AI assistant powered by KoboldCpp / OpenAI API.**
 
-JARVIS is a beginner-friendly, modular AI assistant that runs entirely on your
-machine. It uses [Ollama](https://ollama.com) to serve open-source language
-models locally, keeping your data private and your costs at zero.
+JARVIS is a beginner-friendly, modular AI assistant. It connects to any
+OpenAI-compatible backend (KoboldCpp, vLLM, etc.) to serve
+open-source language models.
 
 ---
 
 ## Features
 
-- **Local AI** — Runs on your machine with Ollama. No cloud, no API keys, no
-  data leaks.
+- **Local AI** — Runs on your machine or LAN via any OpenAI-compatible backend. No cloud, no data leaks.
 - **Tool framework** — Web search, file read/write, system info, and more.
   Extensible via a simple `Tool` base class.
 - **Web search** — Search the web using DuckDuckGo (free, no API key needed).
@@ -20,8 +19,8 @@ models locally, keeping your data private and your costs at zero.
   to disk.
 - **Streaming responses** — See tokens appear in real time as the model
   generates them.
-- **Configurable** — Model, keep-alive, context length, colors, streaming, tools,
-  and more are adjustable via environment variables or `config.py`.
+- **Configurable** — Model, base URL, API key, context length, colors, streaming,
+  tools, and more are adjustable via environment variables or `config.py`.
 - **Error handling** — Startup health check detects missing models or offline
   servers and shows clear instructions.
 - **Modular design** — Separate `brain/`, `memory/`, `tools/`, and `voice/`
@@ -38,12 +37,8 @@ models locally, keeping your data private and your costs at zero.
 ## Requirements
 
 - **Python** 3.10 or later
-- **Ollama** — [Install Ollama](https://ollama.com) for your platform
-- A **model** pulled via Ollama (default: `llama3.2:3b`)
-
-```bash
-ollama pull llama3.2:3b
-```
+- An **OpenAI-compatible backend** (KoboldCpp, vLLM, etc.)
+- A **model** served by your backend (default: `koboldcpp/gemma-4-12b-it-qat-q4_0`)
 
 ---
 
@@ -68,10 +63,8 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# Make sure Ollama is running
-ollama serve
-
-# In another terminal, start JARVIS (from the repository root)
+# Make sure your AI backend is running (e.g. KoboldCpp on port 5001)
+# Then start JARVIS (from the repository root)
 python -m jarvis.main
 ```
 
@@ -105,10 +98,10 @@ All settings can be overridden with environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address |
-| `OLLAMA_MODEL` | `llama3.2:3b` | Model name |
-| `OLLAMA_TIMEOUT` | `120` | Request timeout in seconds |
-| `OLLAMA_KEEP_ALIVE` | `30m` | How long to keep model loaded |
+| `AI_BASE_URL` | `http://192.168.1.194:5001/v1` | OpenAI-compatible API endpoint |
+| `AI_API_KEY` | `local` | API key for the backend |
+| `AI_MODEL` | `koboldcpp/gemma-4-12b-it-qat-q4_0` | Model name |
+| `AI_TIMEOUT` | `120` | Request timeout in seconds |
 | `MAX_CONTEXT_TURNS` | `10` | Conversation pairs sent to the LLM |
 | `ENABLE_STREAMING` | `true` | Enable token-by-token streaming |
 | `ENABLE_COLORS` | `true` | Enable colored terminal output |
@@ -153,7 +146,7 @@ jarvis/
 
 ## Roadmap
 
-- [x] Local AI via Ollama
+- [x] Local AI via OpenAI-compatible backend (KoboldCpp / vLLM)
 - [x] Persistent conversation memory
 - [x] Streaming responses
 - [x] Configurable settings
@@ -174,8 +167,7 @@ jarvis/
 
 ## Credits
 
-JARVIS is powered by [Ollama](https://ollama.com) and the open-source LLM
-community. Built with Python.
+JARVIS is powered by the open-source LLM community. Built with Python.
 
 ---
 

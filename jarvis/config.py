@@ -1,15 +1,18 @@
 """Central configuration for JARVIS.
 
-All settings can be overridden with environment variables.
+All settings can be overridden with environment variables or a .env file.
 """
 
 import os
+from dotenv import load_dotenv
 
-# Ollama settings
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
-OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+load_dotenv()
+
+# AI provider settings
+AI_BASE_URL = os.getenv("AI_BASE_URL", "http://192.168.1.194:5001/v1")
+AI_API_KEY = os.getenv("AI_API_KEY", "local")
+AI_MODEL = os.getenv("AI_MODEL", "koboldcpp/gemma-4-12b-it-qat-q4_0")
+AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "120"))
 
 # Assistant settings
 ASSISTANT_NAME = "JARVIS"

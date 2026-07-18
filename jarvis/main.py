@@ -4,25 +4,23 @@ import os
 import sys
 from datetime import datetime
 
-import ollama
-
 from .brain.processor import (
-    ask_ollama,
-    ask_ollama_stream,
+    ask_ai,
+    ask_ai_stream,
     build_messages,
     parse_tool_calls,
 )
 from .config import (
+    AI_BASE_URL,
+    AI_MODEL,
     ASSISTANT_NAME,
     ENABLE_COLORS,
     ENABLE_STREAMING,
     ENABLE_TOOLS,
     LOG_DIR,
     MAX_CONTEXT_TURNS,
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
-    OLLAMA_TIMEOUT,
 )
+from .brain.client import get_client
 from .memory.memory import add_entry, load_memory
 
 
@@ -76,27 +74,20 @@ def setup_logging():
 def print_banner():
     banner = f"""
 {'=' * 38}
-  {green(ASSISTANT_NAME + ' v1.1.0')}
+  {green(ASSISTANT_NAME + ' v1.2.0')}
   {green('Local AI Assistant')}
-  {yellow('Powered by Ollama')}
+  {yellow(f'Model: {AI_MODEL}')}
 {'=' * 38}
 """
     print(banner)
 
 
-def check_ollama():
+def check_ai():
     try:
-        ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT).list()
-    except ollama.RequestError:
-        print(ts(red(f"Cannot connect to Ollama at {OLLAMA_BASE_URL}")))
-        print(ts(yellow("  Start Ollama with: ollama serve")))
-        print(ts(yellow("  Install from https://ollama.com")))
-        return False
-    except ollama.ResponseError as e:
-        print(ts(red(f"Ollama error: {e.error}")))
-        return False
+        get_client().models.list()
     except Exception as e:
-        print(ts(red(f"Ollama connection failed: {e}")))
+        logging.error(f"AI server unreachable at {AI_BASE_URL}: {e}")
+        print(ts(red(f"Gemma AI server unavailable at {AI_BASE_URL}")))
         return False
     return True
 
@@ -227,7 +218,7 @@ def process_tool_calls(messages, initial_response, user_input):
                 "content": f"Tool '{name}' returned: {json.dumps(result, indent=2, default=str)}"
             })
 
-        text = ask_ollama(messages)
+        text = ask_ai(messages)
 
     return text
 
@@ -235,7 +226,7 @@ def process_tool_calls(messages, initial_response, user_input):
 def stream_response(messages):
     full_reply = ""
     print(ts(green(f"{ASSISTANT_NAME}: ")), end="", flush=True)
-    for chunk in ask_ollama_stream(messages):
+    for chunk in ask_ai_stream(messages):
         content = chunk["message"]["content"]
         if content:
             print(content, end="", flush=True)
@@ -259,7 +250,7 @@ def main():
         if tools:
             print(ts(grey(f"Tools loaded: {', '.join(t['name'] for t in tools)}")))
 
-    if not check_ollama():
+    if not check_ai():
         sys.exit(1)
 
     print(ts(yellow("Type /help for commands, 'exit' to quit.\n")))
@@ -291,7 +282,7 @@ def main():
 
         try:
             if ENABLE_TOOLS and not _is_casual(user_input):
-                full_reply = ask_ollama(messages)
+                full_reply = ask_ai(messages)
                 calls = parse_tool_calls(full_reply)
                 valid_calls = [(n, a) for n, a in calls if _validate_tool_call(user_input, n)]
                 if valid_calls:
@@ -299,14 +290,14 @@ def main():
                 cleaned = _strip_tool_calls(full_reply)
                 print(ts(green(f"{ASSISTANT_NAME}: {cleaned}")))
             elif ENABLE_TOOLS and _is_casual(user_input):
-                full_reply = ask_ollama(messages)
+                full_reply = ask_ai(messages)
                 cleaned = _strip_tool_calls(full_reply)
                 print(ts(green(f"{ASSISTANT_NAME}: {cleaned}")))
             else:
                 if ENABLE_STREAMING:
                     full_reply = stream_response(messages)
                 else:
-                    full_reply = ask_ollama(messages)
+                    full_reply = ask_ai(messages)
                     print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
 
         except Exception as e:

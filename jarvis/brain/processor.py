@@ -1,38 +1,16 @@
-import atexit
 import json
 import re
 
 
-import ollama
 from ..config import (
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
-    OLLAMA_TIMEOUT,
-    OLLAMA_KEEP_ALIVE,
+    AI_MODEL,
     SYSTEM_PROMPT,
     MAX_CONTEXT_TURNS,
     ENABLE_TOOLS,
 )
+from .client import get_client
 
 MAX_TOOL_ROUNDS = 3
-
-_client = None
-
-def _get_client():
-    global _client
-    if _client is None:
-        _client = ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT)
-        atexit.register(_close_client)
-    return _client
-
-def _close_client():
-    global _client
-    if _client is not None:
-        try:
-            _client.close()
-        except Exception:
-            pass
-        _client = None
 
 
 def _build_prompt():
@@ -158,55 +136,35 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
     return calls
 
 
-def ask_ollama(messages, keep_alive=OLLAMA_KEEP_ALIVE):
+def ask_ai(messages, **_ignored):
+    from ..config import AI_BASE_URL
     try:
-        response = _get_client().chat(
-            model=OLLAMA_MODEL,
+        response = get_client().chat.completions.create(
+            model=AI_MODEL,
             messages=messages,
+            temperature=0.7,
             stream=False,
-            keep_alive=keep_alive,
-        )
-    except ollama.ResponseError as e:
-        if e.status_code == 404:
-            raise RuntimeError(
-                f"Model '{OLLAMA_MODEL}' not found. "
-                f"Pull it with: ollama pull {OLLAMA_MODEL}"
-            )
-        raise RuntimeError(f"Ollama error (HTTP {e.status_code}): {e.error}")
-    except ollama.RequestError as e:
-        raise RuntimeError(
-            f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
-            f"Is it running? ({e.error})"
         )
     except Exception as e:
-        raise RuntimeError(f"Ollama request failed: {e}")
-    return response["message"]["content"]
+        raise RuntimeError(f"AI request failed at {AI_BASE_URL}: {e}")
+    return response.choices[0].message.content
 
 
-def ask_ollama_stream(messages, keep_alive=OLLAMA_KEEP_ALIVE):
+def ask_ai_stream(messages, **_ignored):
+    from ..config import AI_BASE_URL
     try:
-        stream = _get_client().chat(
-            model=OLLAMA_MODEL,
+        stream = get_client().chat.completions.create(
+            model=AI_MODEL,
             messages=messages,
+            temperature=0.7,
             stream=True,
-            keep_alive=keep_alive,
         )
         for chunk in stream:
-            yield chunk
-    except ollama.ResponseError as e:
-        if e.status_code == 404:
-            raise RuntimeError(
-                f"Model '{OLLAMA_MODEL}' not found. "
-                f"Pull it with: ollama pull {OLLAMA_MODEL}"
-            )
-        raise RuntimeError(f"Ollama error (HTTP {e.status_code}): {e.error}")
-    except ollama.RequestError as e:
-        raise RuntimeError(
-            f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
-            f"Is it running? ({e.error})"
-        )
+            content = chunk.choices[0].delta.content or ""
+            if content:
+                yield {"message": {"content": content}}
     except Exception as e:
-        raise RuntimeError(f"Ollama request failed: {e}")
+        raise RuntimeError(f"AI request failed: {e}")
 
 
 def build_messages(user_input, memory_log, max_turns=MAX_CONTEXT_TURNS):
