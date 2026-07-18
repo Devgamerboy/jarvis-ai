@@ -2,28 +2,28 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 
-import ollama
-
 from .brain.processor import (
-    ask_ollama,
-    ask_ollama_stream,
+    ask_ai,
+    ask_ai_stream,
     build_messages,
     parse_tool_calls,
 )
 from .config import (
+    AI_BASE_URL,
+    AI_MODEL,
     ASSISTANT_NAME,
     ENABLE_COLORS,
     ENABLE_STREAMING,
     ENABLE_TOOLS,
     LOG_DIR,
     MAX_CONTEXT_TURNS,
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
-    OLLAMA_TIMEOUT,
 )
+from .brain.client import get_client
 from .memory.memory import add_entry, load_memory
+from .memory.facts import set_fact
 
 
 def _color(code, text):
@@ -73,30 +73,30 @@ def setup_logging():
     )
 
 
+def log_tool_use(tool_name: str, duration: float, error: str = ""):
+    log_line = f"TOOL:{tool_name} duration:{duration:.2f}s"
+    if error:
+        log_line += f" error:{error}"
+    print(ts(grey(log_line)))
+
+
 def print_banner():
     banner = f"""
 {'=' * 38}
-  {green(ASSISTANT_NAME + ' v1.1.0')}
-  {green('Local AI Assistant')}
-  {yellow('Powered by Ollama')}
+  {green(ASSISTANT_NAME + ' v1.3.0')}
+  {green('Desktop AI Assistant')}
+  {yellow(f'Model: {AI_MODEL}')}
 {'=' * 38}
 """
     print(banner)
 
 
-def check_ollama():
+def check_ai():
     try:
-        ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT).list()
-    except ollama.RequestError:
-        print(ts(red(f"Cannot connect to Ollama at {OLLAMA_BASE_URL}")))
-        print(ts(yellow("  Start Ollama with: ollama serve")))
-        print(ts(yellow("  Install from https://ollama.com")))
-        return False
-    except ollama.ResponseError as e:
-        print(ts(red(f"Ollama error: {e.error}")))
-        return False
+        get_client().models.list()
     except Exception as e:
-        print(ts(red(f"Ollama connection failed: {e}")))
+        logging.error(f"AI server unreachable at {AI_BASE_URL}: {e}")
+        print(ts(red(f"Gemma AI server unavailable at {AI_BASE_URL}")))
         return False
     return True
 
@@ -113,6 +113,7 @@ def handle_command(cmd: str) -> bool:
         print(ts(cyan("  /tool <name> <json>    ") + yellow("Run a tool directly")))
         print(ts(cyan("  /clear                 ") + yellow("Clear conversation history")))
         print(ts(cyan("  /status                ") + yellow("Show system information")))
+        print(ts(cyan("  /set location <loc>    ") + yellow("Save your location")))
         print(ts(cyan("  exit / quit            ") + yellow("Exit JARVIS")))
         return True
 
@@ -141,7 +142,10 @@ def handle_command(cmd: str) -> bool:
                 print(ts(red("Arguments must be valid JSON (e.g. /tool read_file {\"path\": \"/tmp/test\"})")))
                 return True
         from .tools import execute
+        start = time.time()
         result = execute(tool_name, **tool_args)
+        duration = time.time() - start
+        log_tool_use(tool_name, duration)
         if result["success"]:
             print(ts(green("Result:")))
             print(json.dumps(result["result"], indent=2, default=str))
@@ -156,19 +160,44 @@ def handle_command(cmd: str) -> bool:
         return True
 
     if verb == "/status":
-        from .tools.system_tools import SystemInfoTool
-        result = SystemInfoTool().execute()
-        print(ts(cyan("System Information:")))
-        for k, v in result.items():
-            label = k.replace("_", " ").title()
-            print(ts(f"  {label}: {v}"))
+        from .tools import execute as tool_execute
+        result = tool_execute("system_info")
+        if result["success"]:
+            print(ts(cyan("System Information:")))
+            for k, v in result["result"].items():
+                if isinstance(v, dict):
+                    print(ts(f"  {k.replace('_', ' ').title()}:"))
+                    for sk, sv in v.items():
+                        print(ts(f"    {sk.replace('_', ' ').title()}: {sv}"))
+                else:
+                    label = k.replace("_", " ").title()
+                    print(ts(f"  {label}: {v}"))
+        else:
+            print(ts(red(f"Error: {result['error']}")))
+        return True
+
+    if verb == "/set" and rest.startswith("location"):
+        loc_value = rest[len("location "):].strip()
+        if loc_value:
+            set_fact("location", loc_value)
+            print(ts(green(f"Location saved: {loc_value}")))
+        else:
+            print(ts(red("Usage: /set location <city, state>")))
         return True
 
     return False
 
 
 _TOOL_KEYWORDS = {
-    "system_info": ["system", "os ", "operating system", "cpu", "processor", "memory", "ram", "hardware", "computer spec", "machine", "platform", "specs"],
+    "system_info": ["system", "os ", "operating system", "cpu", "processor", "memory", "ram", "hardware", "computer spec", "machine", "platform", "specs", "hostname", "kernel", "gpu", "uptime", "how fast", "how much ram"],
+    "battery": ["battery", "charge", "power", "battery level", "battery percentage"],
+    "weather": ["weather", "temperature", "outside", "hot", "cold", "rain", "humidity", "wind", "forecast", "umbrella", "what is it like"],
+    "forecast": ["forecast", "3-day", "weekend", "this week", "coming days"],
+    "sunrise_sunset": ["sunrise", "sunset", "daylight", "sun", "dusk", "dawn"],
+    "location": ["where am i", "my location", "current location", "what city", "what country", "where are we"],
+    "time": ["what time", "current time", "what is the date", "what day", "today's date", "what's the date"],
+    "network_status": ["internet", "network", "connectivity", "ping", "dns", "gateway", "connection", "online", "wifi"],
+    "speed_test": ["speed test", "internet speed", "download speed", "upload speed", "bandwidth"],
     "web_search": ["search", "look up", "find online", "google", "duckduckgo", "search the web", "find on the internet", "what is", "who is"],
     "web_fetch": ["fetch", "get url", "open url", "visit", "download page", "http", "https://", "website content"],
     "read_file": ["read", "open file", "show file", "view file", "cat ", "content of", "print file"],
@@ -221,13 +250,19 @@ def process_tool_calls(messages, initial_response, user_input):
 
         for name, args in valid:
             print(ts(yellow(f"  Using tool: {name}...")))
+            start = time.time()
             result = execute(name, **args)
+            duration = time.time() - start
+            if result["success"]:
+                log_tool_use(name, duration)
+            else:
+                log_tool_use(name, duration, result.get("error", "unknown"))
             messages.append({
                 "role": "user",
                 "content": f"Tool '{name}' returned: {json.dumps(result, indent=2, default=str)}"
             })
 
-        text = ask_ollama(messages)
+        text = ask_ai(messages)
 
     return text
 
@@ -235,7 +270,7 @@ def process_tool_calls(messages, initial_response, user_input):
 def stream_response(messages):
     full_reply = ""
     print(ts(green(f"{ASSISTANT_NAME}: ")), end="", flush=True)
-    for chunk in ask_ollama_stream(messages):
+    for chunk in ask_ai_stream(messages):
         content = chunk["message"]["content"]
         if content:
             print(content, end="", flush=True)
@@ -259,7 +294,7 @@ def main():
         if tools:
             print(ts(grey(f"Tools loaded: {', '.join(t['name'] for t in tools)}")))
 
-    if not check_ollama():
+    if not check_ai():
         sys.exit(1)
 
     print(ts(yellow("Type /help for commands, 'exit' to quit.\n")))
@@ -286,12 +321,19 @@ def main():
             print(ts(yellow("Type /help for available commands.")))
             continue
 
+        if user_input.lower().startswith("my location is"):
+            loc = user_input[len("my location is"):].strip()
+            if loc:
+                set_fact("location", loc)
+                print(ts(green(f"Got it! I'll remember your location as: {loc}")))
+            continue
+
         memory = load_memory()
         messages = build_messages(user_input, memory, MAX_CONTEXT_TURNS)
 
         try:
             if ENABLE_TOOLS and not _is_casual(user_input):
-                full_reply = ask_ollama(messages)
+                full_reply = ask_ai(messages)
                 calls = parse_tool_calls(full_reply)
                 valid_calls = [(n, a) for n, a in calls if _validate_tool_call(user_input, n)]
                 if valid_calls:
@@ -299,14 +341,14 @@ def main():
                 cleaned = _strip_tool_calls(full_reply)
                 print(ts(green(f"{ASSISTANT_NAME}: {cleaned}")))
             elif ENABLE_TOOLS and _is_casual(user_input):
-                full_reply = ask_ollama(messages)
+                full_reply = ask_ai(messages)
                 cleaned = _strip_tool_calls(full_reply)
                 print(ts(green(f"{ASSISTANT_NAME}: {cleaned}")))
             else:
                 if ENABLE_STREAMING:
                     full_reply = stream_response(messages)
                 else:
-                    full_reply = ask_ollama(messages)
+                    full_reply = ask_ai(messages)
                     print(ts(green(f"{ASSISTANT_NAME}: {full_reply}")))
 
         except Exception as e:

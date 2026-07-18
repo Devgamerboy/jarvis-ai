@@ -1,38 +1,16 @@
-import atexit
 import json
 import re
 
 
-import ollama
 from ..config import (
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
-    OLLAMA_TIMEOUT,
-    OLLAMA_KEEP_ALIVE,
+    AI_MODEL,
     SYSTEM_PROMPT,
     MAX_CONTEXT_TURNS,
     ENABLE_TOOLS,
 )
+from .client import get_client
 
 MAX_TOOL_ROUNDS = 3
-
-_client = None
-
-def _get_client():
-    global _client
-    if _client is None:
-        _client = ollama.Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT)
-        atexit.register(_close_client)
-    return _client
-
-def _close_client():
-    global _client
-    if _client is not None:
-        try:
-            _client.close()
-        except Exception:
-            pass
-        _client = None
 
 
 def _build_prompt():
@@ -46,11 +24,37 @@ def _build_prompt():
 
         usage_examples = {
             "system_info": 'TOOL_CALL: system_info()',
+            "battery": 'TOOL_CALL: battery()',
+            "weather": 'TOOL_CALL: weather({"location": "Charlotte, NC"})',
+            "forecast": 'TOOL_CALL: forecast({"location": "Charlotte, NC"})',
+            "sunrise_sunset": 'TOOL_CALL: sunrise_sunset({"location": "Charlotte, NC"})',
+            "location": 'TOOL_CALL: location()',
+            "time": 'TOOL_CALL: time()',
+            "network_status": 'TOOL_CALL: network_status()',
+            "speed_test": 'TOOL_CALL: speed_test()',
             "web_search": 'TOOL_CALL: web_search({"query": "Python programming"})',
-            "read_file": 'TOOL_CALL: read_file({"path": "/etc/os-release"})',
-            "write_file": 'TOOL_CALL: write_file({"path": "/tmp/note.txt", "content": "hello"})',
-            "list_files": 'TOOL_CALL: list_files({"path": "/home"})',
             "web_fetch": 'TOOL_CALL: web_fetch({"url": "https://example.com"})',
+            "read_file": 'TOOL_CALL: read_file({"path": "/etc/os-release"})',
+            "write_file": 'TOOL_CALL: write_file({"path": "/tmp/test.txt", "content": "hello"})',
+            "list_files": 'TOOL_CALL: list_files({"path": "/home"})',
+        }
+
+        tool_category = {
+            "system": ["system_info", "battery"],
+            "weather": ["weather", "forecast", "sunrise_sunset"],
+            "location": ["location", "time"],
+            "network": ["network_status", "speed_test"],
+            "web": ["web_search", "web_fetch"],
+            "files": ["read_file", "write_file", "list_files"],
+        }
+
+        category_descriptions = {
+            "system": "System Information & Power",
+            "weather": "Weather, Forecast & Sun Times",
+            "location": "Location & Time",
+            "network": "Network & Internet",
+            "web": "Web Search & Fetch",
+            "files": "File Operations",
         }
 
         parts = [
@@ -58,21 +62,29 @@ def _build_prompt():
             "",
             "## Tool Usage Guidelines",
             "",
-            "You have access to tools for system info, file operations, and web lookups.",
-            "Only call a tool when the user explicitly asks for something that requires one:",
-            "- system_info: only when asked about system, OS, CPU, memory, or hardware",
-            "- web_search: only when asked to search the web or look something up online",
-            "- web_fetch: only when given a specific URL to fetch",
-            "- read_file: only when asked to read, open, or view a file",
-            "- write_file: only when asked to create, write, or save a file",
-            "- list_files: only when asked to list files or directories",
-            "",
+            "You have access to tools across several categories. Call a tool when the user asks for something that requires live data.",
             "For greetings, casual conversation, thanks, or goodbyes — just reply conversationally. Be friendly and natural.",
             "Never call a tool for greetings or chit-chat.",
             "",
-            "IMPORTANT: When the user asks a factual question that a tool can answer (system info, search, file read), you MUST call the tool.",
-            "NEVER invent or guess system information, hardware details, search results, or file contents.",
+            "IMPORTANT: When the user asks a factual question that a tool can answer, you MUST call the tool.",
+            "NEVER invent or guess system information, hardware details, weather data, search results, or file contents.",
             "Base your answer ONLY on the data the tool returns.",
+            "",
+            "Examples of when to call each tool:",
+            "",
+            '  "What is outside like?" —→ weather',
+            '  "Do I need an umbrella?" —→ weather (check chance of rain)',
+            '  "What is the forecast?" —→ forecast',
+            '  "When does the sun rise?" —→ sunrise_sunset',
+            '  "Where am I?" —→ location',
+            '  "What time is it?" —→ time',
+            '  "How is my system?" —→ system_info',
+            '  "How much RAM do I have?" —→ system_info',
+            '  "What is my CPU?" —→ system_info',
+            '  "Battery status?" —→ battery',
+            '  "Is the internet working?" —→ network_status',
+            '  "Run a speed test" —→ speed_test',
+            '  "Search the web for ..." —→ web_search',
             "",
             "To call a tool, output exactly one line:",
             '    TOOL_CALL: tool_name({"param": "value"})',
@@ -80,39 +92,20 @@ def _build_prompt():
             "    TOOL_CALL: tool_name()",
             "After the tool runs, summarize the result naturally.",
             "",
-            "## Examples",
-            "",
-            'User: hello',
-            'Assistant: Hey there! How can I help you today?',
-            "",
-            'User: hi jarvis',
-            'Assistant: Hi! What can I do for you?',
-            "",
-            'User: good morning',
-            'Assistant: Good morning! Hope you are having a great day. How can I assist?',
-            "",
-            'User: What system am I on?',
-            'Assistant: TOOL_CALL: system_info()',
-            "",
-            'User: Search the web for Python news',
-            'Assistant: TOOL_CALL: web_search({"query": "Python news"})',
-            "",
-'User: Create a file called test.txt with content "hello"',
-'Assistant: TOOL_CALL: write_file({"path": "/tmp/test.txt", "content": "hello"})',
-"",
-'User: Read the file /tmp/test.txt',
-'Assistant: TOOL_CALL: read_file({"path": "/tmp/test.txt"})',
-"",
-"Available tools:",
+            "## Available Tools",
         ]
 
-        for t in tools:
-            hint = usage_examples.get(t["name"])
-            if hint:
-                parts.append(f"  {t['name']} — {t['description']}")
-                parts.append(f"    Call: {hint}")
-            else:
-                parts.append(f"  {t['name']} — {t['description']}")
+        for cat_key, cat_tools in tool_category.items():
+            parts.append(f"\n### {category_descriptions[cat_key]}")
+            for t_name in cat_tools:
+                tool_spec = next((t for t in tools if t["name"] == t_name), None)
+                if tool_spec:
+                    hint = usage_examples.get(t_name)
+                    if hint:
+                        parts.append(f"  {t_name} — {tool_spec['description']}")
+                        parts.append(f"    Example: {hint}")
+                    else:
+                        parts.append(f"  {t_name} — {tool_spec['description']}")
 
         return "\n".join(parts)
     except Exception:
@@ -158,55 +151,35 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
     return calls
 
 
-def ask_ollama(messages, keep_alive=OLLAMA_KEEP_ALIVE):
+def ask_ai(messages, **_ignored):
+    from ..config import AI_BASE_URL
     try:
-        response = _get_client().chat(
-            model=OLLAMA_MODEL,
+        response = get_client().chat.completions.create(
+            model=AI_MODEL,
             messages=messages,
+            temperature=0.7,
             stream=False,
-            keep_alive=keep_alive,
-        )
-    except ollama.ResponseError as e:
-        if e.status_code == 404:
-            raise RuntimeError(
-                f"Model '{OLLAMA_MODEL}' not found. "
-                f"Pull it with: ollama pull {OLLAMA_MODEL}"
-            )
-        raise RuntimeError(f"Ollama error (HTTP {e.status_code}): {e.error}")
-    except ollama.RequestError as e:
-        raise RuntimeError(
-            f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
-            f"Is it running? ({e.error})"
         )
     except Exception as e:
-        raise RuntimeError(f"Ollama request failed: {e}")
-    return response["message"]["content"]
+        raise RuntimeError(f"AI request failed at {AI_BASE_URL}: {e}")
+    return response.choices[0].message.content
 
 
-def ask_ollama_stream(messages, keep_alive=OLLAMA_KEEP_ALIVE):
+def ask_ai_stream(messages, **_ignored):
+    from ..config import AI_BASE_URL
     try:
-        stream = _get_client().chat(
-            model=OLLAMA_MODEL,
+        stream = get_client().chat.completions.create(
+            model=AI_MODEL,
             messages=messages,
+            temperature=0.7,
             stream=True,
-            keep_alive=keep_alive,
         )
         for chunk in stream:
-            yield chunk
-    except ollama.ResponseError as e:
-        if e.status_code == 404:
-            raise RuntimeError(
-                f"Model '{OLLAMA_MODEL}' not found. "
-                f"Pull it with: ollama pull {OLLAMA_MODEL}"
-            )
-        raise RuntimeError(f"Ollama error (HTTP {e.status_code}): {e.error}")
-    except ollama.RequestError as e:
-        raise RuntimeError(
-            f"Cannot reach Ollama at {OLLAMA_BASE_URL}. "
-            f"Is it running? ({e.error})"
-        )
+            content = chunk.choices[0].delta.content or ""
+            if content:
+                yield {"message": {"content": content}}
     except Exception as e:
-        raise RuntimeError(f"Ollama request failed: {e}")
+        raise RuntimeError(f"AI request failed at {AI_BASE_URL}: {e}")
 
 
 def build_messages(user_input, memory_log, max_turns=MAX_CONTEXT_TURNS):
