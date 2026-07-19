@@ -132,7 +132,8 @@ class SystemInfoTool(Tool):
     def __init__(self):
         super().__init__(
             "system_info",
-            "Only when the user explicitly asks about their system, OS, CPU, memory, hardware, computer specifications, hostname, GPU, or uptime."
+            "Show OS, CPU, RAM, disk, GPU, hostname, IP, and uptime.",
+            category="System"
         )
 
     def execute(self) -> dict:
@@ -160,7 +161,8 @@ class BatteryTool(Tool):
     def __init__(self):
         super().__init__(
             "battery",
-            "Only when the user explicitly asks about battery status, charge level, or power."
+            "Show battery percentage, charging status, and remaining time.",
+            category="System"
         )
 
     def execute(self) -> dict:

@@ -1,0 +1,42 @@
+{
+  "ai": {
+    "base_url": "http://192.168.1.194:5001/v1",
+    "api_key": "local",
+    "model": "koboldcpp/gemma-4-12b-it-qat-q4_0",
+    "timeout": 120
+  },
+  "assistant": {
+    "name": "JARVIS",
+    "system_prompt": "You are JARVIS, a helpful and intelligent AI assistant."
+  },
+  "memory": {
+    "max_lines": 50,
+    "context_turns": 10,
+    "notes_dir": "jarvis/notes"
+  },
+  "tools": {
+    "enabled": true,
+    "max_tool_rounds": 5,
+    "max_chain_steps": 5,
+    "auto_confirm_write": true,
+    "approved_dirs": [],
+    "approved_apps": []
+  },
+  "permissions": {
+    "safe": "auto",
+    "write": "auto",
+    "sensitive": "confirm",
+    "destructive": "confirm"
+  },
+  "ui": {
+    "streaming": true,
+    "colors": true
+  },
+  "location": {
+    "default": "",
+    "use_ip": true
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}

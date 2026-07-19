@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0-development] - 2026-07-18
+
+### Added
+
+- **Dynamic tool discovery** — Tools are automatically discovered from `jarvis/tools/` and `jarvis/plugins/` packages at startup. No manual registration needed for new tools.
+- **Plugin API** — Documented plugin interface under `jarvis/plugins/`. Drop a `Tool` subclass in the plugins directory and it is loaded automatically. Example plugin included.
+- **Tool chaining** — Multi-step execution plans with bounded steps, intermediate result storage, intent validation, and clean failure handling.
+- **Permission system** — Four risk levels (safe, write, sensitive, destructive). Safe tools run automatically; write tools auto-confirm (configurable); sensitive and destructive tools require user confirmation via terminal prompt.
+- **Calculator tool** — Safe arithmetic without `eval`. Supports addition, subtraction, multiplication, division, percentages (X% of Y), powers, square roots, and parentheses.
+- **Unit conversion tool** — Convert length, weight/mass, volume, temperature (F/C/K), speed, and area with natural expression parsing (e.g. "5 miles to km").
+- **Currency conversion tool** — Live exchange rates via open.er-api.com with caching. Supports USD, EUR, GBP, and 150+ currencies.
+- **News tool** — Fetch headlines by topic (general, technology, AI, sports, or custom query). Falls back to RSS feeds when no API key is available.
+- **Notes tool** — Create, list, read, update, delete, and search notes stored as JSON files in `jarvis/notes/`.
+- **Clipboard tool** — Read, copy, and clear the system clipboard (supports X11 via xclip and Wayland via wl-clipboard).
+- **Screenshot tool** — Capture the screen using gnome-screenshot, scrot, or ImageMagick.
+- **Enhanced file tools** — `create_dir`, `copy_file`, `move_file`, `search_files` (glob), `search_content` (text in files), `delete_file`, `open_file` (desktop default app).
+- **Process manager** — `list_processes`, `search_processes`, `terminate_process` (guarded — no system-critical or root termination).
+- **Desktop launcher** — `launch_app` (approved applications with configurable allowlist) and `open_url` (default browser).
+- **Smarter memory** — Improved `/memory`, `/remember`, `/forget` commands; memory prefix categorization.
+- **Improved /tools command** — Tools grouped by category (Web, Weather & Location, System, Network, Files, Desktop, Productivity, Utilities, Plugins) with risk levels shown.
+- **Improved personality** — Friendly welcome message; remembers user name ("my name is ..."); does not claim success without tool confirmation.
+- **Better logging** — Separate log files: `errors.log` (warnings+), `tools.log` (all tool usage), `security.log` (permission decisions). Tool duration and success/failure logged.
+- **Example config** — `config.example.json` documents all available settings.
+- **40 total tools** — Up from 14 in v1.3.
+- **61 automated tests** — Unit tests for discovery, registry, permissions, calculator, unit conversion, notes, file safety, chaining, greetings, and tool validation.
+
+### Changed
+
+- All v1.3 tools now include `category` and `risk` metadata for better grouping.
+- Tool base class (`base.py`) extended with `category`, `risk`, and `parameter_schema()`.
+- Registry (`registry.py`) added `list_by_category()`, `list_names()`, and permission-aware `execute()`.
+- Configuration (`config.py`) split into dedicated loggers for tool, security, and error events.
+- Dynamic system prompt generation uses discovered tool categories instead of hardcoded lists.
+- Main loop (`main.py`) integrates permission checks, smarter greeting handling, and name memory.
+
+### Fixed
+
+- All tool modules handle import errors gracefully without crashing startup.
+- File operations prevent path traversal via `os.path.normpath()`.
+- Calculator uses safe AST parsing — no `eval()` on untrusted input.
+
 ## [1.3.0] - 2026-07-18
 
 ### Added

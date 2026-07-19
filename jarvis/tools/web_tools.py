@@ -3,7 +3,7 @@ from .base import Tool
 
 class WebSearchTool(Tool):
     def __init__(self):
-        super().__init__("web_search", "Only when the user explicitly asks to search the web, look something up online, or find information on the internet.")
+        super().__init__("web_search", "Search the web via DuckDuckGo for the given query.", category="Web")
 
     def execute(self, query: str, max_results: int = 5) -> dict:
         try:
@@ -22,7 +22,7 @@ class WebSearchTool(Tool):
 
 class WebFetchTool(Tool):
     def __init__(self):
-        super().__init__("web_fetch", "Only when the user explicitly asks to fetch, open, or download the contents of a specific URL or website.")
+        super().__init__("web_fetch", "Fetch and extract readable text content from a URL.", category="Web")
 
     def execute(self, url: str) -> dict:
         try:

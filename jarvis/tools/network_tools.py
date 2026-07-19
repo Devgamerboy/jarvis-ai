@@ -55,7 +55,8 @@ class NetworkStatusTool(Tool):
     def __init__(self):
         super().__init__(
             "network_status",
-            "Only when the user explicitly asks about network connectivity, internet status, ping, DNS, or gateway."
+            "Check internet connectivity, ping latency, DNS, and gateway.",
+            category="Network"
         )
 
     def execute(self) -> dict:
@@ -71,7 +72,8 @@ class SpeedTestTool(Tool):
     def __init__(self):
         super().__init__(
             "speed_test",
-            "Only when the user explicitly asks to run an internet speed test."
+            "Run an internet speed test measuring download, upload, and ping.",
+            category="Network"
         )
 
     def execute(self) -> dict:

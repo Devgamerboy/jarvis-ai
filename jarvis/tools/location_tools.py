@@ -5,7 +5,8 @@ class LocationTool(Tool):
     def __init__(self):
         super().__init__(
             "location",
-            "Only when the user explicitly asks about their current location, where they are, city, region, country, or timezone."
+            "Show city, region, country, timezone, and coordinates based on IP.",
+            category="Weather & Location"
         )
 
     def execute(self) -> dict:
@@ -34,7 +35,8 @@ class TimeTool(Tool):
     def __init__(self):
         super().__init__(
             "time",
-            "Only when the user explicitly asks about the current time, date, what time it is, or the current date."
+            "Show current local time, date, and timezone.",
+            category="Weather & Location"
         )
 
     def execute(self, location: str = "") -> dict:

@@ -149,7 +149,8 @@ class WeatherTool(Tool):
     def __init__(self):
         super().__init__(
             "weather",
-            "Only when the user explicitly asks about the current weather, temperature, conditions outside, or what it is like outside."
+            "Current temperature, feels like, humidity, wind, conditions, and UV index.",
+            category="Weather & Location"
         )
 
     def execute(self, location: str = "") -> dict:
@@ -160,7 +161,8 @@ class ForecastTool(Tool):
     def __init__(self):
         super().__init__(
             "forecast",
-            "Only when the user explicitly asks about the weather forecast, prediction, or what weather to expect in the coming days."
+            "Multi-day weather forecast with high/low, conditions, and chance of rain.",
+            category="Weather & Location"
         )
 
     def execute(self, location: str = "") -> dict:
@@ -171,7 +173,8 @@ class SunriseSunsetTool(Tool):
     def __init__(self):
         super().__init__(
             "sunrise_sunset",
-            "Only when the user explicitly asks about sunrise, sunset, or daylight hours."
+            "Sunrise, sunset times and daylight hours for a location.",
+            category="Weather & Location"
         )
 
     def execute(self, location: str = "") -> dict:

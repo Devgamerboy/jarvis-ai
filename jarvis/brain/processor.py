@@ -1,116 +1,140 @@
+"""Prompt building and AI interaction — supports selective tool prompts."""
+
 import json
 import re
-
 
 from ..config import (
     AI_MODEL,
     SYSTEM_PROMPT,
     MAX_CONTEXT_TURNS,
+    MAX_HISTORY_MESSAGES,
+    MAX_PROMPT_CHARS,
     ENABLE_TOOLS,
 )
 from .client import get_client
 
-MAX_TOOL_ROUNDS = 3
+# ---------------------------------------------------------------------------
+# Prompt caching — rebuilt once per startup, then reused
+# ---------------------------------------------------------------------------
+_FULL_PROMPT_CACHE: str | None = None
 
 
-def _build_prompt():
+def _build_prompt(tool_names: list[str] | None = None) -> str:
+    """Build a system prompt listing *tool_names* (or all if ``None``).
+
+    The full-tool-list version is cached after the first call.
+    """
     if not ENABLE_TOOLS:
         return SYSTEM_PROMPT
+
+    if tool_names is None:
+        global _FULL_PROMPT_CACHE
+        if _FULL_PROMPT_CACHE is not None:
+            return _FULL_PROMPT_CACHE
+        _FULL_PROMPT_CACHE = _build_prompt_text(None)
+        return _FULL_PROMPT_CACHE
+
+    return _build_prompt_text(tool_names)
+
+
+def _build_prompt_text(tool_names: list[str] | None) -> str:
+    """Build prompt text for the given tool subset (or all tools)."""
     try:
-        from ..tools import list_all
-        tools = list_all()
-        if not tools:
+        from ..tools import list_by_category, get
+
+        if tool_names is not None:
+            specs = []
+            for name in tool_names:
+                t = get(name)
+                if t:
+                    specs.append(t.spec())
+            grouped = {"Selected": specs} if specs else {}
+        else:
+            grouped = list_by_category()
+
+        if not grouped:
             return SYSTEM_PROMPT
 
-        usage_examples = {
-            "system_info": 'TOOL_CALL: system_info()',
-            "battery": 'TOOL_CALL: battery()',
-            "weather": 'TOOL_CALL: weather({"location": "Charlotte, NC"})',
-            "forecast": 'TOOL_CALL: forecast({"location": "Charlotte, NC"})',
-            "sunrise_sunset": 'TOOL_CALL: sunrise_sunset({"location": "Charlotte, NC"})',
-            "location": 'TOOL_CALL: location()',
-            "time": 'TOOL_CALL: time()',
-            "network_status": 'TOOL_CALL: network_status()',
-            "speed_test": 'TOOL_CALL: speed_test()',
-            "web_search": 'TOOL_CALL: web_search({"query": "Python programming"})',
-            "web_fetch": 'TOOL_CALL: web_fetch({"url": "https://example.com"})',
-            "read_file": 'TOOL_CALL: read_file({"path": "/etc/os-release"})',
-            "write_file": 'TOOL_CALL: write_file({"path": "/tmp/test.txt", "content": "hello"})',
-            "list_files": 'TOOL_CALL: list_files({"path": "/home"})',
-        }
-
-        tool_category = {
-            "system": ["system_info", "battery"],
-            "weather": ["weather", "forecast", "sunrise_sunset"],
-            "location": ["location", "time"],
-            "network": ["network_status", "speed_test"],
-            "web": ["web_search", "web_fetch"],
-            "files": ["read_file", "write_file", "list_files"],
-        }
-
-        category_descriptions = {
-            "system": "System Information & Power",
-            "weather": "Weather, Forecast & Sun Times",
-            "location": "Location & Time",
-            "network": "Network & Internet",
-            "web": "Web Search & Fetch",
-            "files": "File Operations",
-        }
+        category_order = [
+            "Selected",
+            "Web",
+            "Weather & Location",
+            "System",
+            "Network",
+            "Files",
+            "Desktop",
+            "Productivity",
+            "Utilities",
+            "Plugins",
+        ]
 
         parts = [
             SYSTEM_PROMPT,
             "",
-            "## Tool Usage Guidelines",
-            "",
-            "You have access to tools across several categories. Call a tool when the user asks for something that requires live data.",
-            "For greetings, casual conversation, thanks, or goodbyes — just reply conversationally. Be friendly and natural.",
-            "Never call a tool for greetings or chit-chat.",
-            "",
-            "IMPORTANT: When the user asks a factual question that a tool can answer, you MUST call the tool.",
-            "NEVER invent or guess system information, hardware details, weather data, search results, or file contents.",
-            "Base your answer ONLY on the data the tool returns.",
-            "",
-            "Examples of when to call each tool:",
-            "",
-            '  "What is outside like?" —→ weather',
-            '  "Do I need an umbrella?" —→ weather (check chance of rain)',
-            '  "What is the forecast?" —→ forecast',
-            '  "When does the sun rise?" —→ sunrise_sunset',
-            '  "Where am I?" —→ location',
-            '  "What time is it?" —→ time',
-            '  "How is my system?" —→ system_info',
-            '  "How much RAM do I have?" —→ system_info',
-            '  "What is my CPU?" —→ system_info',
-            '  "Battery status?" —→ battery',
-            '  "Is the internet working?" —→ network_status',
-            '  "Run a speed test" —→ speed_test',
-            '  "Search the web for ..." —→ web_search',
-            "",
-            "To call a tool, output exactly one line:",
-            '    TOOL_CALL: tool_name({"param": "value"})',
-            "    For tools with no parameters:",
-            "    TOOL_CALL: tool_name()",
-            "After the tool runs, summarize the result naturally.",
-            "",
             "## Available Tools",
         ]
 
-        for cat_key, cat_tools in tool_category.items():
-            parts.append(f"\n### {category_descriptions[cat_key]}")
-            for t_name in cat_tools:
-                tool_spec = next((t for t in tools if t["name"] == t_name), None)
-                if tool_spec:
-                    hint = usage_examples.get(t_name)
-                    if hint:
-                        parts.append(f"  {t_name} — {tool_spec['description']}")
-                        parts.append(f"    Example: {hint}")
-                    else:
-                        parts.append(f"  {t_name} — {tool_spec['description']}")
+        for cat in category_order:
+            tools_in_cat = grouped.get(cat)
+            if not tools_in_cat:
+                continue
+            parts.append(f"\n### {cat}")
+            for s in tools_in_cat:
+                risk_label = s.get("risk", "safe")
+                line = f"  {s['name']} — {s['description']}"
+                if risk_label != "safe":
+                    line += f" [{risk_label}]"
+                parts.append(line)
 
         return "\n".join(parts)
     except Exception:
         return SYSTEM_PROMPT
 
+
+def select_tools_for_query(user_input: str) -> list[str] | None:
+    """Return a relevant tool subset based on user input keywords.
+
+    Returns ``None`` when all tools should be included (broad query).
+    """
+    lowered = user_input.lower()
+
+    _CATEGORY_KEYWORDS: dict[str, list[str]] = {
+        "Weather & Location": ["weather", "forecast", "temperature", "sunrise", "sunset", "rain", "humidity",
+                                "wind", "location", "where am i", "time", "date", "what time", "daylight"],
+        "Web": ["search", "web", "google", "duckduckgo", "look up", "find online", "fetch", "url", "http",
+                "news", "headlines", "current events"],
+        "System": ["system", "cpu", "memory", "ram", "disk", "gpu", "process", "battery", "charge",
+                   "power", "hardware", "os", "hostname", "uptime"],
+        "Network": ["internet", "network", "ping", "dns", "speed test", "bandwidth", "connectivity", "wifi"],
+        "Files": ["file", "read", "write", "save", "create", "directory", "folder", "list file",
+                  "copy", "move", "rename", "search file", "find file", "delete", "open file"],
+        "Desktop": ["screenshot", "capture screen", "clipboard", "copy", "launch", "open app",
+                    "open url", "open folder"],
+        "Productivity": ["note", "remember", "write down", "save this", "my notes"],
+        "Utilities": ["calculate", "compute", "math", "convert", "currency", "exchange rate"],
+    }
+
+    matched_categories = set()
+    for cat, keywords in _CATEGORY_KEYWORDS.items():
+        if any(kw in lowered for kw in keywords):
+            matched_categories.add(cat)
+
+    if not matched_categories:
+        return None
+
+    from ..tools import list_by_category
+    by_cat = list_by_category()
+    tool_names: list[str] = []
+    for cat in matched_categories:
+        specs = by_cat.get(cat, [])
+        tool_names.extend(s["name"] for s in specs)
+
+    return tool_names if tool_names else None
+
+
+# ---------------------------------------------------------------------------
+# Tool call parsing
+# ---------------------------------------------------------------------------
 
 _WITH_ARGS = [
     re.compile(r'(?:TOOL_CALL:\s*)?(\w+)\s*\(\s*(\{.*?\})\s*\)', re.DOTALL),
@@ -151,18 +175,29 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
     return calls
 
 
+# ---------------------------------------------------------------------------
+# AI calls
+# ---------------------------------------------------------------------------
+
 def ask_ai(messages, **_ignored):
-    from ..config import AI_BASE_URL
-    try:
-        response = get_client().chat.completions.create(
-            model=AI_MODEL,
-            messages=messages,
-            temperature=0.7,
-            stream=False,
-        )
-    except Exception as e:
-        raise RuntimeError(f"AI request failed at {AI_BASE_URL}: {e}")
-    return response.choices[0].message.content
+    from ..config import AI_BASE_URL, AI_MAX_RETRIES
+    last_error = None
+    for attempt in range(1, AI_MAX_RETRIES + 2):
+        try:
+            response = get_client().chat.completions.create(
+                model=AI_MODEL,
+                messages=messages,
+                temperature=0.7,
+                stream=False,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            if attempt <= AI_MAX_RETRIES:
+                import time as _time
+                _time.sleep(1)
+                continue
+    raise RuntimeError(f"AI request failed at {AI_BASE_URL}: {last_error}")
 
 
 def ask_ai_stream(messages, **_ignored):
@@ -182,17 +217,37 @@ def ask_ai_stream(messages, **_ignored):
         raise RuntimeError(f"AI request failed at {AI_BASE_URL}: {e}")
 
 
-def build_messages(user_input, memory_log, max_turns=MAX_CONTEXT_TURNS):
-    messages = [{"role": "system", "content": _build_prompt()}]
+# ---------------------------------------------------------------------------
+# Message builder — enforces MAX_HISTORY_MESSAGES and MAX_PROMPT_CHARS
+# ---------------------------------------------------------------------------
 
-    if max_turns > 0:
+def build_messages(
+    user_input: str,
+    memory_log: list,
+    max_turns: int = MAX_CONTEXT_TURNS,
+    tool_names: list[str] | None = None,
+) -> list[dict]:
+    """Build the message array for the LLM with size limits."""
+    prompt = _build_prompt(tool_names)
+
+    messages = [{"role": "system", "content": prompt}]
+
+    if max_turns > 0 and memory_log:
         recent = memory_log[-max_turns:]
     else:
-        recent = memory_log
+        recent = memory_log or []
 
-    for entry in recent:
+    history_limit = min(MAX_HISTORY_MESSAGES, len(recent))
+    char_budget = MAX_PROMPT_CHARS - len(prompt) - len(user_input) - 500
+    added_chars = 0
+
+    for entry in recent[-history_limit:]:
+        turn_chars = len(entry["user"]) + len(entry["assistant"]) + 50
+        if added_chars + turn_chars > char_budget and added_chars > 200:
+            break
         messages.append({"role": "user", "content": entry["user"]})
         messages.append({"role": "assistant", "content": entry["assistant"]})
+        added_chars += turn_chars
 
     messages.append({"role": "user", "content": user_input})
     return messages
